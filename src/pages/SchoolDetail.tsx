@@ -1,13 +1,33 @@
-import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 import { Icon } from '@/components/Icon';
+import { Modal } from '@/components/Modal';
 import { SuperAdmin } from '@/lib/api/services';
 import type { School } from '@/lib/api/types';
 
 export function SchoolDetailPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState<null | 'suspend' | 'delete'>(null);
+
   const { data, isLoading, error } = useQuery<School>({
     queryKey: ['school', id], queryFn: () => SuperAdmin.getSchool(id), enabled: !!id,
+  });
+
+  const suspend = useMutation({
+    mutationFn: () => SuperAdmin.toggleSuspension(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['school', id] }); qc.invalidateQueries({ queryKey: ['schools'] }); toast.success('Status updated'); setConfirming(null); },
+    onError:   (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+  });
+  const remove = useMutation({
+    mutationFn: () => SuperAdmin.deleteSchool(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['schools'] }); toast.success('School deleted'); navigate('/schools', { replace: true }); },
+    onError:   (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
 
   if (isLoading) return <Skeleton />;
@@ -34,11 +54,16 @@ export function SchoolDetailPage() {
             <h1 className="font-display text-[24px] font-bold tracking-tight">{data.name}</h1>
             <p className="text-ink-500 text-sm">{data.address}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {data.status === 'ACTIVE'
               ? <span className="chip-success">●&nbsp;Active</span>
               : <span className="chip-warning">●&nbsp;Suspended</span>}
             <span className="chip-brand">{data.plan ?? 'Standard'}</span>
+            <button onClick={() => setEditing(true)} className="btn-outline py-1.5 px-3 text-xs">Edit</button>
+            <button onClick={() => setConfirming('suspend')} className="btn-ghost py-1.5 px-3 text-xs">
+              {data.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
+            </button>
+            <button onClick={() => setConfirming('delete')} className="btn-ghost py-1.5 px-3 text-xs text-danger hover:bg-danger-bg">Delete</button>
           </div>
         </div>
       </header>
@@ -65,14 +90,87 @@ export function SchoolDetailPage() {
         <div className="card p-6">
           <h2 className="font-display text-lg font-semibold">Quick actions</h2>
           <div className="mt-4 space-y-2">
-            <ActionRow icon="logout"   label="Sign in as school admin" />
-            <ActionRow icon="upload"   label="Bulk import roster" />
-            <ActionRow icon="download" label="Export finance ledger" />
-            <ActionRow icon="bell"     label="Send platform notice" />
+            <ActionRow onClick={() => toast('Coming soon — impersonation requires backend support')} icon="logout"   label="Sign in as school admin" />
+            <ActionRow onClick={() => toast('Open admin web to bulk import')} icon="upload"   label="Bulk import roster" />
+            <ActionRow onClick={() => toast('Generating finance export…')} icon="download" label="Export finance ledger" />
+            <ActionRow onClick={() => navigate('/announcements')} icon="bell"     label="Send platform notice" />
           </div>
         </div>
       </section>
+
+      <AnimatePresence>
+        {editing && (
+          <EditSchoolModal school={data} onClose={() => setEditing(false)} onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['school', id] });
+            qc.invalidateQueries({ queryKey: ['schools'] });
+            setEditing(false);
+          }}/>
+        )}
+        {confirming === 'suspend' && (
+          <Modal title={`${data.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'} ${data.name}?`} onClose={() => setConfirming(null)}
+            footer={<>
+              <button onClick={() => setConfirming(null)} className="btn-ghost">Cancel</button>
+              <button onClick={() => suspend.mutate()} disabled={suspend.isPending}
+                className={data.status === 'ACTIVE' ? 'btn bg-warning text-white hover:bg-warning/90' : 'btn-primary'}>
+                {suspend.isPending ? 'Working…' : data.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
+              </button>
+            </>}>
+            <p className="text-sm text-ink-500">
+              {data.status === 'ACTIVE'
+                ? 'Suspending freezes new sign-ins for this tenant. Existing data is preserved.'
+                : 'Reactivating restores access for all users at this school.'}
+            </p>
+          </Modal>
+        )}
+        {confirming === 'delete' && (
+          <Modal title={`Delete ${data.name}?`} onClose={() => setConfirming(null)}
+            footer={<>
+              <button onClick={() => setConfirming(null)} className="btn-ghost">Cancel</button>
+              <button onClick={() => remove.mutate()} disabled={remove.isPending}
+                className="btn bg-danger text-white hover:bg-danger/90">
+                {remove.isPending ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            </>}>
+            <p className="text-sm text-ink-500">Soft-deletes the tenant. Data remains recoverable for 30 days.</p>
+          </Modal>
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name: school.name, registrationNumber: school.registrationNumber,
+    contactEmail: school.contactEmail, contactPhone: school.contactPhone, address: school.address,
+  });
+  const save = useMutation({
+    mutationFn: () => SuperAdmin.updateSchool(school.id, form),
+    onSuccess: () => { toast.success('School updated'); onSaved(); },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+  });
+  return (
+    <Modal title="Edit school" onClose={onClose}
+      footer={<>
+        <button onClick={onClose} className="btn-ghost">Cancel</button>
+        <button onClick={() => save.mutate()} disabled={save.isPending} className="btn-primary">
+          {save.isPending ? 'Saving…' : 'Save changes'}
+        </button>
+      </>}>
+      <div className="space-y-3">
+        {[
+          ['name', 'School name'], ['registrationNumber', 'Registration #'],
+          ['contactEmail', 'Contact email'], ['contactPhone', 'Contact phone'],
+          ['address', 'Address'],
+        ].map(([k, label]) => (
+          <div key={k}>
+            <label className="label">{label}</label>
+            <input className="input mt-2" value={(form as any)[k]}
+              onChange={(e) => setForm(f => ({ ...f, [k]: e.target.value }))}/>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -95,9 +193,9 @@ function Row({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-function ActionRow({ icon, label }: { icon: any; label: string }) {
+function ActionRow({ icon, label, onClick }: { icon: any; label: string; onClick: () => void }) {
   return (
-    <button className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm hover:bg-muted transition-colors text-left">
+    <button onClick={onClick} className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm hover:bg-muted transition-colors text-left">
       <span className="inline-flex items-center gap-3">
         <span className="h-8 w-8 rounded-lg bg-brand-50 grid place-items-center text-brand-600"><Icon name={icon} size={16}/></span>
         {label}
