@@ -3,6 +3,7 @@
  * Each module corresponds to a tag in the OpenAPI doc.
  */
 import { api, unwrap } from './client';
+import { parseAuthTokens } from './tokenRefresh';
 import type {
   ID,
   LoginCredentials,
@@ -13,8 +14,27 @@ import type {
 
 /* ───────── Module 1: Super Admin & Tenants ───────── */
 export const SuperAdmin = {
-  login: (creds: LoginCredentials) =>
-    unwrap<LoginResponse>(api.post('/super-admin/auth/login', creds)),
+  login: async (creds: LoginCredentials) => {
+    const res = await api.post('/super-admin/auth/login', creds);
+    const body = res.data as Record<string, unknown>;
+    const tokens = parseAuthTokens(body);
+    const admin = body.admin as LoginResponse['user'] | undefined;
+    return {
+      token: tokens?.accessToken ?? (body.token as string) ?? '',
+      user: admin ?? ({
+        id: '',
+        username: creds.username,
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        role: 'SUPER_ADMIN',
+        schoolId: null,
+        status: 'ACTIVE',
+      } as LoginResponse['user']),
+      refreshToken: tokens?.refreshToken ?? null,
+    };
+  },
 
   listSchools: (q?: { page?: number; limit?: number; search?: string; status?: string }) =>
     unwrap<School[]>(api.get('/super-admin/schools', { params: q })),

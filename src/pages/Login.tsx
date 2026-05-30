@@ -23,8 +23,8 @@ export function LoginPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const { token, user } = await SuperAdmin.login({ username, password });
-      loginSuccess(token, user);
+      const { token, refreshToken, user } = await SuperAdmin.login({ username, password });
+      loginSuccess(token, refreshToken, user);
       toast.success(`Welcome back, ${user.firstName}`);
       navigate('/', { replace: true });
     } catch (err: any) {
