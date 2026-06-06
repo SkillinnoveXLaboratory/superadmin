@@ -5,11 +5,7 @@ import { LoginPage } from '@/pages/Login';
 import { OverviewPage } from '@/pages/Overview';
 import { SchoolsPage } from '@/pages/Schools';
 import { SchoolDetailPage } from '@/pages/SchoolDetail';
-import { PlansPage } from '@/pages/Plans';
-import { UsersPage } from '@/pages/Users';
-import { AnnouncementsPage } from '@/pages/Announcements';
-import { DataOpsPage } from '@/pages/DataOps';
-import { SettingsPage } from '@/pages/Settings';
+import { StudentsPage } from '@/pages/Students';
 
 function Protected({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.token);
@@ -33,11 +29,7 @@ export default function App() {
         <Route index element={<OverviewPage />} />
         <Route path="schools" element={<SchoolsPage />} />
         <Route path="schools/:id" element={<SchoolDetailPage />} />
-        <Route path="plans" element={<PlansPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="announcements" element={<AnnouncementsPage />} />
-        <Route path="data" element={<DataOpsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="students" element={<StudentsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -5,7 +5,8 @@ type IconName =
   | 'dashboard' | 'school' | 'students' | 'teacher' | 'attendance' | 'calendar'
   | 'exam' | 'homework' | 'library' | 'finance' | 'sports' | 'transport' | 'hr'
   | 'announcement' | 'chat' | 'settings' | 'logout' | 'search' | 'bell'
-  | 'plus' | 'check' | 'arrow-right' | 'upload' | 'download' | 'parent';
+  | 'plus' | 'check' | 'arrow-right' | 'upload' | 'download' | 'parent'
+  | 'menu' | 'x';
 
 const paths: Record<IconName, JSX.Element> = {
   dashboard: <><rect x="3" y="3" width="8" height="9" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="14" width="8" height="7" rx="2"/></>,
@@ -33,6 +34,8 @@ const paths: Record<IconName, JSX.Element> = {
   upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v12"/></>,
   download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 11l5 5 5-5M12 16V4"/></>,
   parent: <><circle cx="8" cy="6" r="3"/><circle cx="17" cy="7" r="2.5"/><path d="M2 21c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M14 17c.5-.4 1.7-1.3 3-1.3 2.5 0 4.5 2 4.5 4.3"/><circle cx="13" cy="13" r="2"/></>,
+  menu: <><path d="M4 6h16M4 12h16M4 18h16"/></>,
+  x: <><path d="M5 5l14 14M19 5 5 19"/></>,
 };
 
 interface IconProps extends SVGProps<SVGSVGElement> {

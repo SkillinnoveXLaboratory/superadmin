@@ -14,7 +14,7 @@ export function LoginPage() {
   const { token, loginSuccess } = useAuthStore();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   if (token) return <Navigate to="/" replace />;
@@ -23,7 +23,7 @@ export function LoginPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const { token, refreshToken, user } = await SuperAdmin.login({ username, password });
+      const { token, refreshToken, user } = await SuperAdmin.login({ email, password });
       loginSuccess(token, refreshToken, user);
       toast.success(`Welcome back, ${user.firstName}`);
       navigate('/', { replace: true });
@@ -77,9 +77,12 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
             <div>
-              <label className="label">Username</label>
+              <label className="label">Email</label>
               <input className="input mt-2" autoFocus required
-                value={username} onChange={(e) => setUsername(e.target.value)} placeholder="superadmin" />
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@schoolmate.com" />
             </div>
             <div>
               <label className="label">Password</label>

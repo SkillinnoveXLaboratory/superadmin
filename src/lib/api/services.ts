@@ -8,22 +8,64 @@ import type {
   ID,
   LoginCredentials,
   LoginResponse,
+  PaginatedSchoolsResponse,
+  PaginatedStudentsResponse,
   PlatformKPIs,
+  StudentIdCardPayload,
+  StudentListItem,
+  SchoolListItem,
   School,
 } from './types';
+
+function normalizeStudentStatus(value: unknown): StudentListItem['status'] {
+  if (value === 'GRADUATED' || value === 'TRANSFERRED' || value === 'INACTIVE') return value;
+  if (value === 'DE-ENROLLED' || value === 'DEENROLLED') return 'DE-ENROLLED';
+  return 'ENROLLED';
+}
 
 /* ───────── Module 1: Super Admin & Tenants ───────── */
 export const SuperAdmin = {
   login: async (creds: LoginCredentials) => {
-    const res = await api.post('/super-admin/auth/login', creds);
+    const res = await api.post('/super-admin/auth/login', {
+      email: creds.email,
+      password: creds.password,
+    });
     const body = res.data as Record<string, unknown>;
     const tokens = parseAuthTokens(body);
-    const admin = body.admin as LoginResponse['user'] | undefined;
+    const adminRaw = body.admin as Record<string, unknown> | undefined;
+    const adminName = typeof adminRaw?.name === 'string' ? adminRaw.name : '';
+    const parts = adminName.trim().split(/\s+/).filter(Boolean);
+    const firstName = parts[0] ?? '';
+    const lastName = parts.slice(1).join(' ');
+
+    const admin = adminRaw
+      ? ({
+          id: typeof adminRaw.id === 'string' ? adminRaw.id : '',
+          username:
+            typeof adminRaw.email === 'string' && adminRaw.email
+              ? adminRaw.email
+              : typeof adminRaw.name === 'string' && adminRaw.name
+                ? adminRaw.name
+                : creds.email,
+          firstName,
+          lastName,
+          email: typeof adminRaw.email === 'string' ? adminRaw.email : '',
+          phone: '',
+          role: 'SUPER_ADMIN',
+          schoolId: null,
+          status: 'ACTIVE',
+        } as LoginResponse['user'])
+      : undefined;
+
     return {
-      token: tokens?.accessToken ?? (body.token as string) ?? '',
+      token:
+        tokens?.accessToken ??
+        (typeof body.accessToken === 'string' ? body.accessToken : undefined) ??
+        (typeof body.token === 'string' ? body.token : undefined) ??
+        '',
       user: admin ?? ({
         id: '',
-        username: creds.username,
+        username: creds.email,
         firstName: '',
         lastName: '',
         email: '',
@@ -32,14 +74,65 @@ export const SuperAdmin = {
         schoolId: null,
         status: 'ACTIVE',
       } as LoginResponse['user']),
-      refreshToken: tokens?.refreshToken ?? null,
+      refreshToken:
+        tokens?.refreshToken ??
+        (typeof body.refreshToken === 'string' ? body.refreshToken : null),
     };
   },
 
-  listSchools: (q?: { page?: number; limit?: number; search?: string; status?: string }) =>
-    unwrap<School[]>(api.get('/super-admin/schools', { params: q })),
+  listSchools: async (q?: { page?: number; limit?: number; search?: string; status?: string }) => {
+    const res = await api.get('/super-admin/schools', { params: q });
+    const body = res.data as Record<string, unknown>;
+    const schoolsRaw = Array.isArray(body.schools) ? body.schools : [];
+    const schools = schoolsRaw.map((item) => {
+      const school = item as Record<string, unknown>;
+      return {
+        id: typeof school._id === 'string' ? school._id : typeof school.id === 'string' ? school.id : '',
+        name: typeof school.name === 'string' ? school.name : '',
+        registrationNumber: typeof school.registrationNumber === 'string' ? school.registrationNumber : '',
+        address: typeof school.address === 'string' ? school.address : '',
+        contactEmail: typeof school.contactEmail === 'string' ? school.contactEmail : '',
+        contactPhone: typeof school.contactPhone === 'string' ? school.contactPhone : '',
+        status: school.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+        createdAt: typeof school.createdAt === 'string' ? school.createdAt : '',
+        updatedAt: typeof school.updatedAt === 'string' ? school.updatedAt : '',
+      } satisfies SchoolListItem;
+    });
 
-  getSchool: (id: ID) => unwrap<School>(api.get(`/super-admin/schools/${id}`)),
+    const meta = {
+      total: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).total === 'number'
+        ? (body.meta as Record<string, unknown>).total as number
+        : schools.length,
+      page: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).page === 'number'
+        ? (body.meta as Record<string, unknown>).page as number
+        : 1,
+      limit: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).limit === 'number'
+        ? (body.meta as Record<string, unknown>).limit as number
+        : schools.length || 50,
+      pages: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).pages === 'number'
+        ? (body.meta as Record<string, unknown>).pages as number
+        : 1,
+    };
+
+    return { schools, meta } satisfies PaginatedSchoolsResponse;
+  },
+
+  getSchool: async (id: ID) => {
+    const res = await api.get(`/super-admin/schools/${id}`);
+    const body = res.data as Record<string, unknown>;
+    const data = (body.data ?? body.school ?? body) as Record<string, unknown>;
+    return {
+      id: typeof data.id === 'string' ? data.id : typeof data._id === 'string' ? data._id : id,
+      name: typeof data.name === 'string' ? data.name : '',
+      registrationNumber: typeof data.registrationNumber === 'string' ? data.registrationNumber : '',
+      address: typeof data.address === 'string' ? data.address : '',
+      contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : '',
+      contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : '',
+      status: data.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+      createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
+      updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
+    } satisfies School;
+  },
 
   createSchool: (data: Partial<School> & { name: string }) =>
     unwrap<School>(api.post('/super-admin/schools', data)),
@@ -49,10 +142,34 @@ export const SuperAdmin = {
 
   deleteSchool: (id: ID) => unwrap<void>(api.delete(`/super-admin/schools/${id}`)),
 
+  suspendSchool: (id: ID) =>
+    unwrap<School>(api.patch(`/super-admin/schools/${id}/suspend`)),
+
   toggleSuspension: (id: ID) =>
     unwrap<School>(api.patch(`/super-admin/schools/${id}/suspend`)),
 
-  overview: () => unwrap<PlatformKPIs>(api.get('/super-admin/analytics/overview')),
+  overview: async () => {
+    const res = await api.get('/super-admin/analytics/overview');
+    const body = res.data as Record<string, unknown>;
+    const analytics = (body.analytics ?? body.data ?? body) as Record<string, unknown>;
+
+    return {
+      totalSchools: typeof analytics.totalSchools === 'number' ? analytics.totalSchools : 0,
+      activeSchools: typeof analytics.activeSchools === 'number' ? analytics.activeSchools : 0,
+      suspendedSchools: typeof analytics.suspendedSchools === 'number' ? analytics.suspendedSchools : 0,
+      totalUsers:
+        typeof analytics.totalPlatformUsers === 'number'
+          ? analytics.totalPlatformUsers
+          : typeof analytics.totalUsers === 'number'
+            ? analytics.totalUsers
+            : 0,
+      totalStudents: typeof analytics.totalStudents === 'number' ? analytics.totalStudents : 0,
+      totalStaff: typeof analytics.totalStaff === 'number' ? analytics.totalStaff : 0,
+      monthlyRevenue: typeof analytics.monthlyRevenue === 'number' ? analytics.monthlyRevenue : 0,
+      trend: [],
+      topSchools: [],
+    } satisfies PlatformKPIs;
+  },
 };
 
 /* ───────── Module 2: Admissions ───────── */
@@ -72,13 +189,107 @@ export const Admissions = {
 
 /* ───────── Module 3: Students ───────── */
 export const Students = {
-  list: (q?: { classId?: ID; sectionId?: ID; page?: number; limit?: number; q?: string }) =>
-    unwrap(api.get('/students', { params: q })),
-  get: (id: ID) => unwrap(api.get(`/students/${id}`)),
-  create: (body: Record<string, unknown>) => unwrap(api.post('/students', body)),
+  list: async (q?: { page?: number; limit?: number; q?: string }) => {
+    const res = await api.get('/students', { params: q });
+    const body = res.data as Record<string, unknown>;
+    const studentsRaw = Array.isArray(body.students)
+      ? body.students
+      : Array.isArray(body.data)
+        ? body.data
+        : [];
+
+    const students = studentsRaw.map((item) => {
+      const student = item as Record<string, unknown>;
+      const parent = (student.parentContact ?? {}) as Record<string, unknown>;
+      return {
+        id: typeof student._id === 'string' ? student._id : typeof student.id === 'string' ? student.id : '',
+        schoolId: typeof student.schoolId === 'string' ? student.schoolId : '',
+        firstName: typeof student.firstName === 'string' ? student.firstName : '',
+        lastName: typeof student.lastName === 'string' ? student.lastName : '',
+        email: typeof student.email === 'string' ? student.email : '',
+        gender:
+          student.gender === 'FEMALE' || student.gender === 'OTHER'
+            ? student.gender
+            : 'MALE',
+        dateOfBirth: typeof student.dateOfBirth === 'string' ? student.dateOfBirth : '',
+        status: normalizeStudentStatus(student.status),
+        classId: typeof student.classId === 'string' ? student.classId : '',
+        sectionId: typeof student.sectionId === 'string' ? student.sectionId : '',
+        rfidCardCode: typeof student.rfidCardCode === 'string' ? student.rfidCardCode : undefined,
+        parentContact: {
+          fatherName: typeof parent.fatherName === 'string' ? parent.fatherName : undefined,
+          motherName: typeof parent.motherName === 'string' ? parent.motherName : undefined,
+          primaryPhone: typeof parent.primaryPhone === 'string' ? parent.primaryPhone : undefined,
+          email: typeof parent.email === 'string' ? parent.email : undefined,
+          homeAddress: typeof parent.homeAddress === 'string' ? parent.homeAddress : undefined,
+        },
+        createdAt: typeof student.createdAt === 'string' ? student.createdAt : '',
+        updatedAt: typeof student.updatedAt === 'string' ? student.updatedAt : '',
+      } satisfies StudentListItem;
+    });
+
+    const meta = {
+      total: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).total === 'number'
+        ? (body.meta as Record<string, unknown>).total as number
+        : students.length,
+      page: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).page === 'number'
+        ? (body.meta as Record<string, unknown>).page as number
+        : 1,
+      limit: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).limit === 'number'
+        ? (body.meta as Record<string, unknown>).limit as number
+        : students.length || 50,
+      pages: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).pages === 'number'
+        ? (body.meta as Record<string, unknown>).pages as number
+        : 1,
+    };
+
+    return { students, meta } satisfies PaginatedStudentsResponse;
+  },
+  get: async (id: ID) => {
+    const res = await api.get(`/students/${id}`);
+    const body = res.data as Record<string, unknown>;
+    const data = (body.data ?? body.student ?? body) as Record<string, unknown>;
+    const parent = (data.parentContact ?? {}) as Record<string, unknown>;
+    return {
+      id: typeof data.id === 'string' ? data.id : typeof data._id === 'string' ? data._id : id,
+      schoolId: typeof data.schoolId === 'string' ? data.schoolId : '',
+      firstName: typeof data.firstName === 'string' ? data.firstName : '',
+      lastName: typeof data.lastName === 'string' ? data.lastName : '',
+      email: typeof data.email === 'string' ? data.email : '',
+      gender:
+        data.gender === 'FEMALE' || data.gender === 'OTHER'
+          ? data.gender
+          : 'MALE',
+      dateOfBirth: typeof data.dateOfBirth === 'string' ? data.dateOfBirth : '',
+      status: normalizeStudentStatus(data.status),
+      classId: typeof data.classId === 'string' ? data.classId : '',
+      sectionId: typeof data.sectionId === 'string' ? data.sectionId : '',
+      rfidCardCode: typeof data.rfidCardCode === 'string' ? data.rfidCardCode : undefined,
+      parentContact: {
+        fatherName: typeof parent.fatherName === 'string' ? parent.fatherName : undefined,
+        motherName: typeof parent.motherName === 'string' ? parent.motherName : undefined,
+        primaryPhone: typeof parent.primaryPhone === 'string' ? parent.primaryPhone : undefined,
+        email: typeof parent.email === 'string' ? parent.email : undefined,
+        homeAddress: typeof parent.homeAddress === 'string' ? parent.homeAddress : undefined,
+      },
+      createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
+      updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
+    } satisfies StudentListItem;
+  },
   update: (id: ID, body: Record<string, unknown>) => unwrap(api.put(`/students/${id}`, body)),
   remove: (id: ID) => unwrap(api.delete(`/students/${id}`)),
-  idCard: (id: ID) => unwrap(api.get(`/students/${id}/id-card`)),
+  idCard: async (id: ID) => {
+    const res = await api.get(`/students/${id}/id-card`);
+    const body = res.data as Record<string, unknown>;
+    const data = (body.data ?? body) as Record<string, unknown>;
+    return {
+      name: typeof data.name === 'string' ? data.name : '',
+      enrollmentNumber: typeof data.enrollmentNumber === 'string' ? data.enrollmentNumber : '',
+      className: typeof data.className === 'string' ? data.className : '',
+      photoUrl: typeof data.photoUrl === 'string' ? data.photoUrl : undefined,
+      qrCodeData: typeof data.qrCodeData === 'string' ? data.qrCodeData : '',
+    } satisfies StudentIdCardPayload;
+  },
   updateParent: (id: ID, body: Record<string, unknown>) =>
     unwrap(api.put(`/students/${id}/parent`, body)),
 };

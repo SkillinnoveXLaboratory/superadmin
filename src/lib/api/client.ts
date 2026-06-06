@@ -31,7 +31,7 @@ attachTokenRefreshInterceptor(
 api.interceptors.response.use(
   (r) => r,
   (error: AxiosError<{ success: false; code: string; message: string }>) => {
-    if (error.response?.status === 401 && (error.config as { _retry?: boolean })?._retry) {
+    if (error.response?.status === 401) {
       useAuthStore.getState().logout();
     }
     return Promise.reject(error);

@@ -8,7 +8,8 @@ import { Communication } from '@/lib/api/services';
 export function AnnouncementsPage() {
   const qc = useQueryClient();
   const { data: items = [] } = useQuery<any[]>({
-    queryKey: ['announcements'], queryFn: () => Communication.announcements.list(),
+    queryKey: ['announcements'],
+    queryFn: () => Communication.announcements.list() as Promise<any[]>,
   });
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
