@@ -34,7 +34,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas md:grid" style={{ gridTemplateColumns: '260px 1fr' }}>
+    <div className="relative min-h-screen overflow-x-hidden bg-canvas md:grid md:grid-cols-[260px_1fr]">
       <AnimatePresence>
         {mobileNavOpen && (
           <motion.button
@@ -51,7 +51,7 @@ export function AppShell() {
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 w-[86vw] max-w-xs border-r border-line bg-surface flex flex-col shadow-2xl transition-transform duration-200 md:static md:translate-x-0 md:shadow-none',
+          'fixed inset-y-0 left-0 z-50 w-[86vw] max-w-xs border-r border-line bg-surface flex flex-col shadow-2xl transition-transform duration-200 md:sticky md:top-0 md:z-auto md:h-screen md:w-auto md:max-w-none md:shadow-none',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
@@ -156,7 +156,7 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0 min-h-screen">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -164,7 +164,7 @@ export function AppShell() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }}
-              className="p-4 sm:p-6 xl:p-8 max-w-[1400px] mx-auto"
+              className="p-4 sm:p-6 xl:p-8 max-w-[1400px] mx-auto w-full"
             >
               <Outlet />
             </motion.div>
