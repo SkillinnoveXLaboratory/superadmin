@@ -34,7 +34,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-canvas md:grid md:grid-cols-[260px_1fr]">
+    <div className="relative min-h-screen overflow-x-hidden bg-canvas">
       <AnimatePresence>
         {mobileNavOpen && (
           <motion.button
@@ -51,7 +51,7 @@ export function AppShell() {
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 w-[86vw] max-w-xs border-r border-line bg-surface flex flex-col shadow-2xl transition-transform duration-200 md:sticky md:top-0 md:z-auto md:h-screen md:w-auto md:max-w-none md:shadow-none',
+          'fixed inset-y-0 left-0 z-50 w-[86vw] max-w-xs border-r border-line bg-surface flex flex-col shadow-2xl transition-transform duration-200 md:w-[260px] md:max-w-none md:shadow-none',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
@@ -110,7 +110,7 @@ export function AppShell() {
         </div>
       </aside>
 
-      <div className="flex flex-col min-w-0">
+      <div className="flex flex-col min-w-0 md:pl-[260px]">
         <header className="h-16 border-b border-line bg-surface/80 backdrop-blur-md flex items-center px-4 md:px-6 sticky top-0 z-30">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
@@ -121,17 +121,6 @@ export function AppShell() {
             >
               <Icon name="menu" size={20} className="text-ink-700" />
             </button>
-            <div className="relative max-w-md w-full hidden sm:block">
-              <Icon
-                name="search"
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
-              />
-              <input
-                placeholder="Search schools, users, IDs…"
-                className="input pl-9 h-10"
-              />
-            </div>
           </div>
 
           <div className="flex items-center gap-3">

@@ -6,11 +6,18 @@ interface ModalProps {
   onClose: () => void;
   footer?: ReactNode;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export function Modal({ title, onClose, footer, children, size = 'md' }: ModalProps) {
-  const widthClass = size === 'sm' ? 'sm:max-w-sm' : size === 'lg' ? 'sm:max-w-2xl' : 'sm:max-w-lg';
+  const widthClass =
+    size === 'sm'
+      ? 'sm:max-w-sm'
+      : size === 'lg'
+        ? 'sm:max-w-2xl'
+        : size === 'xl'
+          ? 'sm:max-w-4xl'
+          : 'sm:max-w-lg';
 
   return (
     <motion.div

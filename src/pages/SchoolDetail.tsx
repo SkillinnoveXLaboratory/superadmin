@@ -14,6 +14,7 @@ export function SchoolDetailPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<null | 'suspend' | 'delete'>(null);
+  const [showMap, setShowMap] = useState(false);
 
   const { data, isLoading, error } = useQuery<School>({
     queryKey: ['school', id], queryFn: () => SuperAdmin.getSchool(id), enabled: !!id,
@@ -53,6 +54,9 @@ export function SchoolDetailPage() {
           <div className="flex-1">
             <h1 className="font-display text-[24px] font-bold tracking-tight">{data.name}</h1>
             <p className="text-ink-500 text-sm">{data.address}</p>
+            <p className="text-ink-400 text-xs mt-1">
+              {formatLocationSummary(data.location) || 'No location saved yet.'}
+            </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {data.status === 'ACTIVE'
@@ -60,6 +64,11 @@ export function SchoolDetailPage() {
               : <span className="chip-warning">●&nbsp;Suspended</span>}
             <span className="chip-brand">{data.plan ?? 'Standard'}</span>
             <button onClick={() => setEditing(true)} className="btn-outline py-1.5 px-3 text-xs">Edit</button>
+            {data.location?.latitude !== undefined && data.location?.longitude !== undefined && (
+              <button onClick={() => setShowMap(true)} className="btn-ghost py-1.5 px-3 text-xs">
+                View map
+              </button>
+            )}
             <button onClick={() => setConfirming('suspend')} className="btn-ghost py-1.5 px-3 text-xs">
               {data.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
             </button>
@@ -83,6 +92,7 @@ export function SchoolDetailPage() {
             <Row label="Contact phone" value={data.contactPhone} />
             <Row label="Registration"  value={data.registrationNumber} />
             <Row label="Status"        value={data.status} />
+            <Row label="Location"      value={formatLocationSummary(data.location) || '—'} />
             <Row label="Created"       value={fmtDate(data.createdAt)} />
             <Row label="Last updated"  value={fmtDate(data.updatedAt)} />
           </dl>
@@ -134,6 +144,26 @@ export function SchoolDetailPage() {
             <p className="text-sm text-ink-500">Soft-deletes the tenant. Data remains recoverable for 30 days.</p>
           </Modal>
         )}
+        {showMap && (
+          <Modal title={`${data.name} location`} onClose={() => setShowMap(false)} size="xl">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <RowCard label="Address" value={formatLocationSummary(data.location) || data.address} />
+                <RowCard label="Latitude" value={data.location?.latitude?.toString() || '—'} />
+                <RowCard label="Longitude" value={data.location?.longitude?.toString() || '—'} />
+                <RowCard label="Status" value={data.status} />
+              </div>
+              <div className="rounded-2xl border border-line overflow-hidden">
+                <iframe
+                  title={`${data.name} location map`}
+                  src={buildMapEmbedUrl(data.location)}
+                  className="w-full h-[360px] sm:h-[460px]"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          </Modal>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -143,14 +173,19 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
   const [form, setForm] = useState({
     name: school.name, registrationNumber: school.registrationNumber,
     contactEmail: school.contactEmail, contactPhone: school.contactPhone, address: school.address,
+    location: {
+      latitude: school.location?.latitude?.toString() ?? '',
+      longitude: school.location?.longitude?.toString() ?? '',
+      address: school.location?.address ?? school.address ?? '',
+    },
   });
   const save = useMutation({
-    mutationFn: () => SuperAdmin.updateSchool(school.id, form),
+    mutationFn: () => SuperAdmin.updateSchool(school.id, buildSchoolPayload(form)),
     onSuccess: () => { toast.success('School updated'); onSaved(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
   return (
-    <Modal title="Edit school" onClose={onClose}
+    <Modal title="Edit school" onClose={onClose} size="xl"
       footer={<>
         <button onClick={onClose} className="btn-ghost">Cancel</button>
         <button onClick={() => save.mutate()} disabled={save.isPending} className="btn-primary">
@@ -169,6 +204,53 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
               onChange={(e) => setForm(f => ({ ...f, [k]: e.target.value }))}/>
           </div>
         ))}
+        <section className="rounded-2xl border border-line bg-muted/20 p-4 space-y-3">
+          <div>
+            <h3 className="font-semibold text-ink-900">Location</h3>
+            <p className="text-xs text-ink-500 mt-1">Add coordinates and a readable address for the school map.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Latitude</label>
+              <input
+                className="input mt-2"
+                value={form.location.latitude}
+                onChange={(e) => setForm(f => ({ ...f, location: { ...f.location, latitude: e.target.value } }))}
+              />
+            </div>
+            <div>
+              <label className="label">Longitude</label>
+              <input
+                className="input mt-2"
+                value={form.location.longitude}
+                onChange={(e) => setForm(f => ({ ...f, location: { ...f.location, longitude: e.target.value } }))}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label">Location address</label>
+            <textarea
+              className="input mt-2 min-h-[96px]"
+              rows={3}
+              value={form.location.address}
+              onChange={(e) => setForm(f => ({ ...f, location: { ...f.location, address: e.target.value } }))}
+            />
+          </div>
+          {form.location.latitude && form.location.longitude && (
+            <div className="rounded-xl overflow-hidden border border-line">
+              <iframe
+                title="School location map preview"
+                src={buildMapEmbedUrl({
+                  latitude: Number(form.location.latitude),
+                  longitude: Number(form.location.longitude),
+                  address: form.location.address,
+                })}
+                className="w-full h-[260px]"
+                loading="lazy"
+              />
+            </div>
+          )}
+        </section>
       </div>
     </Modal>
   );
@@ -193,6 +275,15 @@ function Row({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+function RowCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-muted/30 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-wider text-ink-400">{label}</div>
+      <div className="text-sm font-medium text-ink-900 mt-1 break-all">{value || '—'}</div>
+    </div>
+  );
+}
 function ActionRow({ icon, label, onClick }: { icon: any; label: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm hover:bg-muted transition-colors text-left">
@@ -214,3 +305,48 @@ function Skeleton() {
   );
 }
 function fmtDate(s?: string) { return s ? new Date(s).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'; }
+
+function formatLocationSummary(location?: School['location']) {
+  if (!location) return '';
+  if (location.address) return location.address;
+  if (location.latitude !== undefined && location.longitude !== undefined) {
+    return `${location.latitude}, ${location.longitude}`;
+  }
+  return '';
+}
+
+function buildMapEmbedUrl(location?: School['location']) {
+  const latitude = location?.latitude ?? 0;
+  const longitude = location?.longitude ?? 0;
+  const delta = 0.01;
+  const left = longitude - delta;
+  const right = longitude + delta;
+  const top = latitude + delta;
+  const bottom = latitude - delta;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${latitude}%2C${longitude}`;
+}
+
+function buildSchoolPayload(form: {
+  name: string;
+  registrationNumber: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+  location: { latitude: string; longitude: string; address: string };
+}) {
+  const payload: Record<string, unknown> = {
+    name: form.name.trim(),
+    registrationNumber: form.registrationNumber.trim(),
+    contactEmail: form.contactEmail.trim(),
+    contactPhone: form.contactPhone.trim(),
+    address: form.address.trim(),
+  };
+  const latitude = Number(form.location.latitude);
+  const longitude = Number(form.location.longitude);
+  const location: Record<string, unknown> = {};
+  if (form.location.latitude.trim() && Number.isFinite(latitude)) location.latitude = latitude;
+  if (form.location.longitude.trim() && Number.isFinite(longitude)) location.longitude = longitude;
+  if (form.location.address.trim()) location.address = form.location.address.trim();
+  if (Object.keys(location).length > 0) payload.location = location;
+  return payload;
+}

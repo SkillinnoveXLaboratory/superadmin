@@ -6,6 +6,7 @@ import { api, unwrap } from './client';
 import { parseAuthTokens } from './tokenRefresh';
 import type {
   ID,
+  GeoLocation,
   LoginCredentials,
   LoginResponse,
   PaginatedSchoolsResponse,
@@ -21,6 +22,70 @@ function normalizeStudentStatus(value: unknown): StudentListItem['status'] {
   if (value === 'GRADUATED' || value === 'TRANSFERRED' || value === 'INACTIVE') return value;
   if (value === 'DE-ENROLLED' || value === 'DEENROLLED') return 'DE-ENROLLED';
   return 'ENROLLED';
+}
+
+function normalizeSchoolLocation(value: unknown): GeoLocation | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const location = value as Record<string, unknown>;
+  const latitude =
+    typeof location.latitude === 'number'
+      ? location.latitude
+      : typeof location.lat === 'number'
+        ? location.lat
+        : typeof location.latitude === 'string'
+          ? Number(location.latitude)
+          : typeof location.lat === 'string'
+            ? Number(location.lat)
+            : undefined;
+  const longitude =
+    typeof location.longitude === 'number'
+      ? location.longitude
+      : typeof location.lng === 'number'
+        ? location.lng
+        : typeof location.longitude === 'string'
+          ? Number(location.longitude)
+          : typeof location.lng === 'string'
+            ? Number(location.lng)
+            : undefined;
+  const address = typeof location.address === 'string' ? location.address : typeof location.label === 'string' ? location.label : undefined;
+
+  if (latitude === undefined && longitude === undefined && !address) return undefined;
+  return {
+    ...(latitude === undefined ? {} : { latitude }),
+    ...(longitude === undefined ? {} : { longitude }),
+    ...(address ? { address } : {}),
+  };
+}
+
+function normalizeSchoolRecord(record: Record<string, unknown>): SchoolListItem {
+  const location = normalizeSchoolLocation(record.location ?? {
+    latitude: record.latitude,
+    longitude: record.longitude,
+    address: record.locationAddress ?? record.locationLabel,
+  });
+
+  return {
+    id: typeof record._id === 'string' ? record._id : typeof record.id === 'string' ? record.id : '',
+    name: typeof record.name === 'string' ? record.name : '',
+    registrationNumber: typeof record.registrationNumber === 'string' ? record.registrationNumber : '',
+    schoolCode: typeof record.schoolCode === 'string' ? record.schoolCode : undefined,
+    address: typeof record.address === 'string' ? record.address : '',
+    contactEmail: typeof record.contactEmail === 'string' ? record.contactEmail : '',
+    contactPhone: typeof record.contactPhone === 'string' ? record.contactPhone : typeof record.primaryPhone === 'string' ? record.primaryPhone : '',
+    primaryPhone: typeof record.primaryPhone === 'string' ? record.primaryPhone : typeof record.contactPhone === 'string' ? record.contactPhone : undefined,
+    secondaryPhone: typeof record.secondaryPhone === 'string' ? record.secondaryPhone : undefined,
+    city: typeof record.city === 'string' ? record.city : undefined,
+    district: typeof record.district === 'string' ? record.district : undefined,
+    pincode: typeof record.pincode === 'string' ? record.pincode : undefined,
+    state: typeof record.state === 'string' ? record.state : undefined,
+    country: typeof record.country === 'string' ? record.country : undefined,
+    logoUrl: typeof record.logoUrl === 'string' ? record.logoUrl : undefined,
+    websiteUrl: typeof record.websiteUrl === 'string' ? record.websiteUrl : undefined,
+    status: record.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+    createdAt: typeof record.createdAt === 'string' ? record.createdAt : '',
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : '',
+    ...(location ? { location } : {}),
+  };
 }
 
 /* ───────── Module 1: Super Admin & Tenants ───────── */
@@ -84,20 +149,7 @@ export const SuperAdmin = {
     const res = await api.get('/super-admin/schools', { params: q });
     const body = res.data as Record<string, unknown>;
     const schoolsRaw = Array.isArray(body.schools) ? body.schools : [];
-    const schools = schoolsRaw.map((item) => {
-      const school = item as Record<string, unknown>;
-      return {
-        id: typeof school._id === 'string' ? school._id : typeof school.id === 'string' ? school.id : '',
-        name: typeof school.name === 'string' ? school.name : '',
-        registrationNumber: typeof school.registrationNumber === 'string' ? school.registrationNumber : '',
-        address: typeof school.address === 'string' ? school.address : '',
-        contactEmail: typeof school.contactEmail === 'string' ? school.contactEmail : '',
-        contactPhone: typeof school.contactPhone === 'string' ? school.contactPhone : '',
-        status: school.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
-        createdAt: typeof school.createdAt === 'string' ? school.createdAt : '',
-        updatedAt: typeof school.updatedAt === 'string' ? school.updatedAt : '',
-      } satisfies SchoolListItem;
-    });
+    const schools = schoolsRaw.map((item) => normalizeSchoolRecord(item as Record<string, unknown>));
 
     const meta = {
       total: typeof body.meta === 'object' && body.meta !== null && typeof (body.meta as Record<string, unknown>).total === 'number'
@@ -121,16 +173,32 @@ export const SuperAdmin = {
     const res = await api.get(`/super-admin/schools/${id}`);
     const body = res.data as Record<string, unknown>;
     const data = (body.data ?? body.school ?? body) as Record<string, unknown>;
+    const location = normalizeSchoolLocation(data.location ?? {
+      latitude: data.latitude,
+      longitude: data.longitude,
+      address: data.locationAddress ?? data.locationLabel,
+    });
     return {
       id: typeof data.id === 'string' ? data.id : typeof data._id === 'string' ? data._id : id,
       name: typeof data.name === 'string' ? data.name : '',
       registrationNumber: typeof data.registrationNumber === 'string' ? data.registrationNumber : '',
+      schoolCode: typeof data.schoolCode === 'string' ? data.schoolCode : undefined,
       address: typeof data.address === 'string' ? data.address : '',
       contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : '',
-      contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : '',
+      contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : typeof data.primaryPhone === 'string' ? data.primaryPhone : '',
+      primaryPhone: typeof data.primaryPhone === 'string' ? data.primaryPhone : typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
+      secondaryPhone: typeof data.secondaryPhone === 'string' ? data.secondaryPhone : undefined,
+      city: typeof data.city === 'string' ? data.city : undefined,
+      district: typeof data.district === 'string' ? data.district : undefined,
+      pincode: typeof data.pincode === 'string' ? data.pincode : undefined,
+      state: typeof data.state === 'string' ? data.state : undefined,
+      country: typeof data.country === 'string' ? data.country : undefined,
+      logoUrl: typeof data.logoUrl === 'string' ? data.logoUrl : undefined,
+      websiteUrl: typeof data.websiteUrl === 'string' ? data.websiteUrl : undefined,
       status: data.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
       createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
       updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
+      ...(location ? { location } : {}),
     } satisfies School;
   },
 

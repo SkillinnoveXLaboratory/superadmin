@@ -7,24 +7,60 @@ import { Icon } from '@/components/Icon';
 import { Lottie } from '@/components/Lottie';
 import { Modal } from '@/components/Modal';
 import { SuperAdmin } from '@/lib/api/services';
-import type { SchoolListItem } from '@/lib/api/types';
+import type { GeoLocation, SchoolListItem } from '@/lib/api/types';
 
 type FilterStatus = 'ALL' | 'ACTIVE' | 'SUSPENDED';
 
 type SchoolForm = {
   name: string;
   registrationNumber: string;
+  schoolCode: string;
   address: string;
+  city: string;
+  district: string;
+  pincode: string;
+  state: string;
+  country: string;
   contactEmail: string;
-  contactPhone: string;
+  primaryPhone: string;
+  secondaryPhone: string;
+  logoUrl: string;
+  websiteUrl: string;
+  location: SchoolLocationForm;
+};
+
+type SchoolLocationForm = {
+  latitude: string;
+  longitude: string;
+  address: string;
+};
+
+type GeoSearchResult = {
+  display_name: string;
+  lat: string;
+  lon: string;
 };
 
 const emptyForm: SchoolForm = {
   name: '',
   registrationNumber: '',
+  schoolCode: '',
   address: '',
+  city: '',
+  district: '',
+  pincode: '',
+  state: '',
+  country: '',
   contactEmail: '',
-  contactPhone: '',
+  primaryPhone: '',
+  secondaryPhone: '',
+  logoUrl: '',
+  websiteUrl: '',
+  location: {
+    latitude: '',
+    longitude: '',
+    address: '',
+  },
 };
 
 export function SchoolsPage() {
@@ -32,6 +68,7 @@ export function SchoolsPage() {
   const [status, setStatus] = useState<FilterStatus>('ALL');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewingLocation, setViewingLocation] = useState<SchoolListItem | null>(null);
 
   const qc = useQueryClient();
 
@@ -46,7 +83,8 @@ export function SchoolsPage() {
   });
 
   const schools = schoolsQuery.data?.schools ?? [];
-  const total = schoolsQuery.data?.meta.total ?? schools.length;
+  const filteredSchools = filterSchools(schools, q);
+  const total = filteredSchools.length;
 
   const suspend = useMutation({
     mutationFn: (args: { id: string; status: 'ACTIVE' | 'SUSPENDED' }) =>
@@ -114,7 +152,7 @@ export function SchoolsPage() {
       <div className="card overflow-hidden">
         {schoolsQuery.isLoading ? (
           <SchoolsSkeleton />
-        ) : schools.length === 0 ? (
+        ) : filteredSchools.length === 0 ? (
           <Empty onCreate={() => setCreateOpen(true)} />
         ) : (
           <div className="overflow-x-auto">
@@ -124,13 +162,14 @@ export function SchoolsPage() {
                   <th className="table-header">School</th>
                   <th className="table-header">Registration</th>
                   <th className="table-header">Contact</th>
+                  <th className="table-header">Location</th>
                   <th className="table-header">Status</th>
                   <th className="table-header">Created</th>
                   <th className="table-header text-right pr-6">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {schools.map((s) => (
+                {filteredSchools.map((s) => (
                   <tr key={s.id} className="hover:bg-muted/40 transition-colors group">
                     <td className="table-cell">
                       <div className="flex items-center gap-3 min-w-0">
@@ -149,6 +188,14 @@ export function SchoolsPage() {
                     <td className="table-cell">
                       <div className="text-ink-900 text-[13px] truncate max-w-[220px]">{s.contactEmail}</div>
                       <div className="text-ink-400 text-xs">{s.contactPhone}</div>
+                    </td>
+                    <td className="table-cell">
+                      <div className="text-ink-900 text-[13px] truncate max-w-[220px]">
+                        {formatLocationSummary(s.location) || s.address || '—'}
+                      </div>
+                      <div className="text-ink-400 text-xs">
+                        {formatCoordinates(s.location)}
+                      </div>
                     </td>
                     <td className="table-cell">
                       {s.status === 'ACTIVE' ? (
@@ -170,6 +217,13 @@ export function SchoolsPage() {
                         type="button"
                       >
                         Edit
+                      </button>
+                      <button
+                        onClick={() => setViewingLocation(s)}
+                        className="btn-ghost py-1.5 px-3 text-xs"
+                        type="button"
+                      >
+                        View map
                       </button>
                       {s.status === 'ACTIVE' && (
                         <button
@@ -213,6 +267,12 @@ export function SchoolsPage() {
             title="Edit school"
             schoolId={editingId}
             onClose={() => setEditingId(null)}
+          />
+        )}
+        {viewingLocation && (
+          <LocationModal
+            school={viewingLocation}
+            onClose={() => setViewingLocation(null)}
           />
         )}
       </AnimatePresence>
@@ -265,15 +325,33 @@ function SchoolModal({
   const currentStatus = schoolQuery.data?.status ?? 'ACTIVE';
 
   const [form, setForm] = useState<SchoolForm>(emptyForm);
+  const [geoResults, setGeoResults] = useState<GeoSearchResult[]>([]);
+  const [geoSearching, setGeoSearching] = useState(false);
+  const [geoError, setGeoError] = useState('');
+  const [geoQuery, setGeoQuery] = useState('');
 
   useEffect(() => {
     if (schoolQuery.data) {
       setForm({
         name: schoolQuery.data.name ?? '',
         registrationNumber: schoolQuery.data.registrationNumber ?? '',
+        schoolCode: (schoolQuery.data as any).schoolCode ?? '',
         address: schoolQuery.data.address ?? '',
+        city: (schoolQuery.data as any).city ?? '',
+        district: (schoolQuery.data as any).district ?? '',
+        pincode: (schoolQuery.data as any).pincode ?? '',
+        state: (schoolQuery.data as any).state ?? '',
+        country: (schoolQuery.data as any).country ?? '',
         contactEmail: schoolQuery.data.contactEmail ?? '',
-        contactPhone: schoolQuery.data.contactPhone ?? '',
+        primaryPhone: (schoolQuery.data as any).primaryPhone ?? schoolQuery.data.contactPhone ?? '',
+        secondaryPhone: (schoolQuery.data as any).secondaryPhone ?? '',
+        logoUrl: (schoolQuery.data as any).logoUrl ?? '',
+        websiteUrl: (schoolQuery.data as any).websiteUrl ?? '',
+        location: {
+          latitude: schoolQuery.data.location?.latitude?.toString() ?? '',
+          longitude: schoolQuery.data.location?.longitude?.toString() ?? '',
+          address: schoolQuery.data.location?.address ?? schoolQuery.data.address ?? '',
+        },
       });
     } else if (!isEdit) {
       setForm(emptyForm);
@@ -281,9 +359,9 @@ function SchoolModal({
   }, [schoolQuery.data, isEdit]);
 
   const save = useMutation({
-    mutationFn: (payload: SchoolForm) => {
+    mutationFn: (payload: Record<string, unknown>) => {
       if (schoolId) return SuperAdmin.updateSchool(schoolId, payload);
-      return SuperAdmin.createSchool(payload);
+      return SuperAdmin.createSchool(payload as { name: string } & Record<string, unknown>);
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['schools'] });
@@ -318,7 +396,114 @@ function SchoolModal({
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    save.mutate(form);
+    save.mutate(buildSchoolPayload(form));
+  }
+
+  async function searchLocation() {
+    const query = geoQuery.trim();
+    if (!query) {
+      setGeoError('Enter a place to search.');
+      setGeoResults([]);
+      return;
+    }
+    setGeoError('');
+    setGeoSearching(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`,
+        { headers: { Accept: 'application/json' } },
+      );
+      const data = (await res.json()) as GeoSearchResult[];
+      setGeoResults(Array.isArray(data) ? data : []);
+      if (!Array.isArray(data) || data.length === 0) {
+        setGeoError('No matching location found.');
+      }
+    } catch {
+      setGeoError('Unable to search location right now.');
+      setGeoResults([]);
+    } finally {
+      setGeoSearching(false);
+    }
+  }
+
+  async function useCurrentLocation() {
+    setGeoError('');
+    if (!navigator.geolocation) {
+      setGeoError('Current location is not supported in this browser.');
+      return;
+    }
+    setGeoSearching(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        setForm((f) => ({
+          ...f,
+          location: {
+            ...f.location,
+            latitude: latitude.toFixed(6),
+            longitude: longitude.toFixed(6),
+          },
+        }));
+        try {
+          const reverseRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+            { headers: { Accept: 'application/json' } },
+          );
+          const reverseData = (await reverseRes.json()) as Record<string, unknown>;
+          const displayName =
+            typeof reverseData.display_name === 'string' ? reverseData.display_name : '';
+          const reverseAddress = (reverseData.address ?? {}) as Record<string, unknown>;
+          const postcode =
+            typeof reverseAddress.postcode === 'string'
+              ? reverseAddress.postcode
+              : extractPincode(displayName);
+          if (displayName) {
+            setForm((f) => ({
+              ...f,
+              location: {
+                ...f.location,
+                address: displayName,
+              },
+              address: f.address || displayName,
+              pincode: f.pincode || postcode,
+              city: f.city || extractCity(displayName),
+              district: f.district || extractDistrict(displayName),
+              state: f.state || extractState(displayName),
+              country: f.country || extractCountry(displayName),
+            }));
+          }
+        } catch {
+          // Keep coordinates even if reverse lookup fails.
+        } finally {
+          setGeoSearching(false);
+        }
+      },
+      () => {
+        setGeoSearching(false);
+        setGeoError('Unable to read your current location.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  function applyLocation(result: GeoSearchResult) {
+    setForm((f) => ({
+      ...f,
+      location: {
+        latitude: result.lat,
+        longitude: result.lon,
+        address: result.display_name,
+      },
+      address: f.address || result.display_name,
+      city: f.city || extractCity(result.display_name),
+      district: f.district || extractDistrict(result.display_name),
+      state: f.state || extractState(result.display_name),
+      country: f.country || extractCountry(result.display_name),
+      pincode: f.pincode || extractPincode(result.display_name),
+    }));
+    setGeoResults([]);
+    setGeoQuery(result.display_name);
   }
 
   const footer = (
@@ -360,7 +545,7 @@ function SchoolModal({
   );
 
   return (
-    <Modal title={title} onClose={onClose} footer={footer} size="lg">
+    <Modal title={title} onClose={onClose} footer={footer} size="xl">
       {isEdit && schoolQuery.isLoading ? (
         <div className="py-8 space-y-3">
           <div className="h-10 bg-muted rounded-xl animate-pulse" />
@@ -385,8 +570,123 @@ function SchoolModal({
               label="Registration number"
               value={form.registrationNumber}
               onChange={(v) => setForm((f) => ({ ...f, registrationNumber: v }))}
+              disabled={isEdit}
               required
             />
+            <section className="rounded-2xl border border-line bg-muted/20 p-4 sm:p-5 space-y-4">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h3 className="font-semibold text-ink-900">Location</h3>
+                  <p className="text-xs text-ink-500 mt-1">
+                    Search on the map or use the current device location, then save latitude and longitude.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={useCurrentLocation}
+                  className="btn-ghost text-xs px-3 py-2"
+                  disabled={geoSearching}
+                >
+                  {geoSearching ? 'Detecting…' : 'Use current location'}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="label">Search location</label>
+                  <div className="flex gap-2 flex-col sm:flex-row">
+                    <input
+                      value={geoQuery}
+                      onChange={(e) => setGeoQuery(e.target.value)}
+                      placeholder="Search city, landmark, school area..."
+                      className="input flex-1"
+                    />
+                    <button type="button" onClick={searchLocation} className="btn-primary px-4 py-2.5" disabled={geoSearching}>
+                      Search
+                    </button>
+                  </div>
+                  {geoError && <p className="text-xs text-danger mt-1">{geoError}</p>}
+                  {geoResults.length > 0 && (
+                    <div className="rounded-xl border border-line overflow-hidden bg-surface">
+                      {geoResults.map((result) => (
+                        <button
+                          key={`${result.lat}-${result.lon}-${result.display_name}`}
+                          type="button"
+                          onClick={() => applyLocation(result)}
+                          className="w-full text-left px-3 py-3 hover:bg-muted border-b border-line last:border-b-0"
+                        >
+                          <div className="text-sm font-medium text-ink-900">{result.display_name}</div>
+                          <div className="text-[11px] text-ink-500 mt-1">
+                            {Number(result.lat).toFixed(6)}, {Number(result.lon).toFixed(6)}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs px-3 py-2"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        address: f.location.address || f.address,
+                        city: f.city || extractCity(f.location.address),
+                        district: f.district || extractDistrict(f.location.address),
+                        state: f.state || extractState(f.location.address),
+                        country: f.country || extractCountry(f.location.address),
+                        pincode: f.pincode || extractPincode(f.location.address),
+                      }))
+                    }
+                  >
+                    Main location
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Latitude"
+                    value={form.location.latitude}
+                    onChange={(v) => setForm((f) => ({ ...f, location: { ...f.location, latitude: v } }))}
+                  />
+                  <Field
+                    label="Longitude"
+                    value={form.location.longitude}
+                    onChange={(v) => setForm((f) => ({ ...f, location: { ...f.location, longitude: v } }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Location address</label>
+                <textarea
+                  value={form.location.address}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      location: { ...f.location, address: e.target.value },
+                    }))
+                  }
+                  rows={3}
+                  className="input mt-2 min-h-[92px]"
+                  placeholder="Selected address or detailed location note"
+                />
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="School code" value={form.schoolCode} onChange={(v) => setForm((f) => ({ ...f, schoolCode: v }))} />
+              <Field label="Website URL" value={form.websiteUrl} onChange={(v) => setForm((f) => ({ ...f, websiteUrl: v }))} />
+              <Field label="Logo URL" value={form.logoUrl} onChange={(v) => setForm((f) => ({ ...f, logoUrl: v }))} />
+              <Field label="Country" value={form.country} onChange={(v) => setForm((f) => ({ ...f, country: v }))} />
+              <Field label="State" value={form.state} onChange={(v) => setForm((f) => ({ ...f, state: v }))} />
+              <Field label="District" value={form.district} onChange={(v) => setForm((f) => ({ ...f, district: v }))} />
+              <Field label="City" value={form.city} onChange={(v) => setForm((f) => ({ ...f, city: v }))} />
+              <Field label="Pincode" value={form.pincode} onChange={(v) => setForm((f) => ({ ...f, pincode: v }))} />
+            </div>
+
             <Field label="Address" value={form.address} onChange={(v) => setForm((f) => ({ ...f, address: v }))} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field
@@ -397,12 +697,37 @@ function SchoolModal({
                 required
               />
               <Field
-                label="Contact phone"
-                value={form.contactPhone}
-                onChange={(v) => setForm((f) => ({ ...f, contactPhone: v }))}
+                label="Primary phone"
+                value={form.primaryPhone}
+                onChange={(v) => setForm((f) => ({ ...f, primaryPhone: v }))}
                 required
               />
+              <Field
+                label="Secondary phone"
+                value={form.secondaryPhone}
+                onChange={(v) => setForm((f) => ({ ...f, secondaryPhone: v }))}
+              />
             </div>
+
+            {form.location.latitude && form.location.longitude && (
+              <div className="rounded-2xl border border-line overflow-hidden bg-surface">
+                <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-ink-900">Map preview</div>
+                    <div className="text-xs text-ink-500">{formatLocationSummary(toGeoLocation(form.location))}</div>
+                  </div>
+                  <div className="text-xs text-ink-500 font-mono">
+                    {form.location.latitude}, {form.location.longitude}
+                  </div>
+                </div>
+                <iframe
+                  title="Selected school location map"
+                  src={buildMapEmbedUrl(toGeoLocation(form.location))}
+                  className="w-full h-[260px] sm:h-[320px]"
+                  loading="lazy"
+                />
+              </div>
+            )}
           </div>
         </form>
       )}
@@ -416,12 +741,14 @@ function Field({
   onChange,
   type = 'text',
   required,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
   required?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -429,9 +756,10 @@ function Field({
       <input
         type={type}
         required={required}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="input mt-2"
+        className={disabled ? 'input mt-2 bg-muted text-ink-500 cursor-not-allowed' : 'input mt-2'}
       />
     </div>
   );
@@ -444,6 +772,174 @@ function DetailField({ label, value }: { label: string; value: string }) {
       <div className="text-sm font-medium text-ink-900 mt-1 break-all">{value || '—'}</div>
     </div>
   );
+}
+
+function LocationModal({ school, onClose }: { school: SchoolListItem; onClose: () => void }) {
+  const location = school.location;
+  const hasCoords = Boolean(location?.latitude && location?.longitude);
+  return (
+    <Modal title={`${school.name} location`} onClose={onClose} size="xl">
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <DetailField label="School" value={school.name} />
+          <DetailField label="Address" value={location?.address || school.address || '—'} />
+          <DetailField label="Latitude" value={location?.latitude?.toString() || '—'} />
+          <DetailField label="Longitude" value={location?.longitude?.toString() || '—'} />
+        </div>
+        {hasCoords ? (
+          <div className="rounded-2xl border border-line overflow-hidden bg-surface">
+            <iframe
+              title={`${school.name} live location`}
+              src={buildMapEmbedUrl(location)}
+              className="w-full h-[320px] sm:h-[420px]"
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-line bg-muted/30 px-4 py-8 text-center text-sm text-ink-500">
+            No map coordinates saved for this school yet.
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function buildSchoolPayload(form: SchoolForm): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: form.name.trim(),
+    registrationNumber: form.registrationNumber.trim(),
+    schoolCode: form.schoolCode.trim(),
+    address: form.address.trim(),
+    contactEmail: form.contactEmail.trim(),
+    contactPhone: form.primaryPhone.trim(),
+    primaryPhone: form.primaryPhone.trim(),
+    secondaryPhone: form.secondaryPhone.trim(),
+    city: form.city.trim(),
+    district: form.district.trim(),
+    pincode: form.pincode.trim(),
+    state: form.state.trim(),
+    country: form.country.trim(),
+    logoUrl: form.logoUrl.trim(),
+    websiteUrl: form.websiteUrl.trim(),
+  };
+
+  const latitude = Number(form.location.latitude);
+  const longitude = Number(form.location.longitude);
+  const hasLatitude = form.location.latitude.trim() !== '' && Number.isFinite(latitude);
+  const hasLongitude = form.location.longitude.trim() !== '' && Number.isFinite(longitude);
+  const location: GeoLocation = {};
+
+  if (hasLatitude) location.latitude = latitude;
+  if (hasLongitude) location.longitude = longitude;
+  if (form.location.address.trim()) location.address = form.location.address.trim();
+
+  if (Object.keys(location).length > 0) {
+    payload.location = location;
+  }
+
+  return payload;
+}
+
+function filterSchools(schools: SchoolListItem[], query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return schools;
+  return schools.filter((school) => {
+    const haystack = [
+      school.name,
+      school.registrationNumber,
+      school.schoolCode,
+      school.address,
+      school.contactEmail,
+      school.contactPhone,
+      school.primaryPhone,
+      school.secondaryPhone,
+      school.city,
+      school.district,
+      school.state,
+      school.country,
+      school.pincode,
+      school.location?.address,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+
+function formatLocationSummary(location?: GeoLocation) {
+  if (!location) return '';
+  if (location.address) return location.address;
+  return location.latitude !== undefined && location.longitude !== undefined
+    ? `${location.latitude}, ${location.longitude}`
+    : '';
+}
+
+function formatCoordinates(location?: GeoLocation) {
+  if (!location || location.latitude === undefined || location.longitude === undefined) return '—';
+  return `${location.latitude}, ${location.longitude}`;
+}
+
+function buildMapEmbedUrl(location?: GeoLocation) {
+  const latitude = location?.latitude ?? 0;
+  const longitude = location?.longitude ?? 0;
+  const delta = 0.01;
+  const left = longitude - delta;
+  const right = longitude + delta;
+  const top = latitude + delta;
+  const bottom = latitude - delta;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${latitude}%2C${longitude}`;
+}
+
+function toGeoLocation(location: SchoolLocationForm): GeoLocation {
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  const result: GeoLocation = {};
+  if (location.latitude.trim() && Number.isFinite(latitude)) result.latitude = latitude;
+  if (location.longitude.trim() && Number.isFinite(longitude)) result.longitude = longitude;
+  if (location.address.trim()) result.address = location.address.trim();
+  return result;
+}
+
+function extractCity(value: string) {
+  const parts = splitLocation(value);
+  return parts[0] ?? '';
+}
+
+function extractDistrict(value: string) {
+  const parts = splitLocation(value);
+  return parts[1] ?? '';
+}
+
+function extractState(value: string) {
+  const parts = splitLocation(value);
+  return parts[2] ?? '';
+}
+
+function extractCountry(value: string) {
+  const parts = splitLocation(value);
+  return parts[3] ?? '';
+}
+
+function extractPincode(value: string) {
+  const match = value.match(/\b\d{5,6}\b/);
+  return match?.[0] ?? '';
+}
+
+function splitLocation(value: string) {
+  return value
+    .split(',')
+    .map((part) => sanitizeLocationPart(part))
+    .filter(Boolean)
+    .slice(-4);
+}
+
+function sanitizeLocationPart(part: string) {
+  return part
+    .replace(/\b\d{4,6}\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function initials(s: string) {

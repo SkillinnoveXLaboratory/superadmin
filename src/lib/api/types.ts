@@ -11,16 +11,33 @@ export type Role =
   | 'PARENT'
   | 'STUDENT';
 
+export interface GeoLocation {
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+}
+
 export interface School {
   id: ID;
   name: string;
   registrationNumber: string;
+  schoolCode?: string;
   contactEmail: string;
   contactPhone: string;
+  primaryPhone?: string;
+  secondaryPhone?: string;
   address: string;
+  city?: string;
+  district?: string;
+  pincode?: string;
+  state?: string;
+  country?: string;
+  logoUrl?: string;
+  websiteUrl?: string;
   status: 'ACTIVE' | 'SUSPENDED';
   createdAt: string;
   updatedAt: string;
+  location?: GeoLocation;
   plan?: string;
   studentCount?: number;
   staffCount?: number;
@@ -30,12 +47,23 @@ export interface SchoolListItem {
   id: ID;
   name: string;
   registrationNumber: string;
+  schoolCode?: string;
   address: string;
   contactEmail: string;
   contactPhone: string;
+  primaryPhone?: string;
+  secondaryPhone?: string;
+  city?: string;
+  district?: string;
+  pincode?: string;
+  state?: string;
+  country?: string;
+  logoUrl?: string;
+  websiteUrl?: string;
   status: 'ACTIVE' | 'SUSPENDED';
   createdAt: string;
   updatedAt: string;
+  location?: GeoLocation;
 }
 
 export interface StudentParentContact {

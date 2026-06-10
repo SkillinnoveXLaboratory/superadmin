@@ -12,7 +12,8 @@ export const api: AxiosInstance = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const { token, activeSchoolId } = useAuthStore.getState();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const isRefreshRequest = config.url?.includes('/auth/refresh');
+  if (token && !isRefreshRequest) config.headers.Authorization = `Bearer ${token}`;
   if (activeSchoolId) config.headers['X-School-ID'] = activeSchoolId;
   return config;
 });
