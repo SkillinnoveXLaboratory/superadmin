@@ -7,7 +7,7 @@ import { Icon } from '@/components/Icon';
 import { Lottie } from '@/components/Lottie';
 import { Modal } from '@/components/Modal';
 import { SuperAdmin } from '@/lib/api/services';
-import type { GeoLocation, SchoolListItem } from '@/lib/api/types';
+import type { GeoLocation, SchoolListItem, SchoolRegistrationResult } from '@/lib/api/types';
 
 type FilterStatus = 'ALL' | 'ACTIVE' | 'SUSPENDED';
 
@@ -69,6 +69,7 @@ export function SchoolsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingLocation, setViewingLocation] = useState<SchoolListItem | null>(null);
+  const [registrationResult, setRegistrationResult] = useState<SchoolRegistrationResult | null>(null);
 
   const qc = useQueryClient();
 
@@ -111,6 +112,7 @@ export function SchoolsPage() {
         <button
           onClick={() => {
             setEditingId(null);
+            setRegistrationResult(null);
             setCreateOpen(true);
           }}
           className="btn-primary"
@@ -260,6 +262,10 @@ export function SchoolsPage() {
             title="Register a new school"
             schoolId={null}
             onClose={() => setCreateOpen(false)}
+            onSuccess={(result) => {
+              setCreateOpen(false);
+              setRegistrationResult(result);
+            }}
           />
         )}
         {editingId && (
@@ -267,12 +273,19 @@ export function SchoolsPage() {
             title="Edit school"
             schoolId={editingId}
             onClose={() => setEditingId(null)}
+            onSuccess={() => {}}
           />
         )}
         {viewingLocation && (
           <LocationModal
             school={viewingLocation}
             onClose={() => setViewingLocation(null)}
+          />
+        )}
+        {registrationResult && (
+          <RegistrationResultModal
+            result={registrationResult}
+            onClose={() => setRegistrationResult(null)}
           />
         )}
       </AnimatePresence>
@@ -309,10 +322,12 @@ function SchoolModal({
   title,
   schoolId,
   onClose,
+  onSuccess,
 }: {
   title: string;
   schoolId: string | null;
   onClose: () => void;
+  onSuccess: (result: SchoolRegistrationResult) => void;
 }) {
   const qc = useQueryClient();
   const isEdit = Boolean(schoolId);
@@ -358,16 +373,20 @@ function SchoolModal({
     }
   }, [schoolQuery.data, isEdit]);
 
-  const save = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => {
-      if (schoolId) return SuperAdmin.updateSchool(schoolId, payload);
+  const save = useMutation<SchoolRegistrationResult, unknown, Record<string, unknown>>({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      if (schoolId) {
+        const school = await SuperAdmin.updateSchool(schoolId, payload);
+        return { school } satisfies SchoolRegistrationResult;
+      }
       return SuperAdmin.createSchool(payload as { name: string } & Record<string, unknown>);
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await qc.invalidateQueries({ queryKey: ['schools'] });
       await qc.invalidateQueries({ queryKey: ['overview'] });
       toast.success(schoolId ? 'School updated' : 'School registered');
-      onClose();
+      if (schoolId) onClose();
+      else onSuccess(result as SchoolRegistrationResult);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to save school'),
   });
@@ -805,6 +824,88 @@ function LocationModal({ school, onClose }: { school: SchoolListItem; onClose: (
   );
 }
 
+function RegistrationResultModal({
+  result,
+  onClose,
+}: {
+  result: SchoolRegistrationResult;
+  onClose: () => void;
+}) {
+  const school = result.school;
+  const admin = result.schoolAdmin;
+  const summaryText = buildRegistrationSummary(result);
+
+  async function copySummary() {
+    try {
+      await navigator.clipboard.writeText(summaryText);
+      toast.success('Registration summary copied');
+    } catch {
+      toast.error('Unable to copy summary');
+    }
+  }
+
+  function downloadSummary() {
+    const blob = new Blob([summaryText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${school.name.replace(/\s+/g, '-').toLowerCase()}-credentials.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Modal title="School registered successfully" onClose={onClose} size="xl" footer={(
+      <>
+        <button type="button" className="btn-ghost text-[11px] sm:text-sm px-2 sm:px-4 py-2 sm:py-2.5" onClick={copySummary}>
+          Copy
+        </button>
+        <button type="button" className="btn-ghost text-[11px] sm:text-sm px-2 sm:px-4 py-2 sm:py-2.5" onClick={downloadSummary}>
+          Download
+        </button>
+        <button type="button" className="btn-primary text-[11px] sm:text-sm px-2 sm:px-4 py-2 sm:py-2.5" onClick={onClose}>
+          Close
+        </button>
+      </>
+    )}>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-success/30 bg-success-bg/40 px-4 py-3">
+          <div className="text-sm font-semibold text-success">Default data seeded</div>
+          <div className="text-xs text-ink-600 mt-1">
+            The new school tenant is active and the school admin credentials are ready to share.
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <DetailField label="School" value={school.name} />
+          <DetailField label="School ID" value={school.id} />
+          <DetailField label="Registration #" value={school.registrationNumber} />
+          <DetailField label="School code" value={school.schoolCode ?? school.registrationNumber} />
+        </div>
+
+        <div className="rounded-2xl border border-line bg-muted/20 p-4 space-y-3">
+          <h3 className="font-semibold text-ink-900">School admin credentials</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <DetailField label="User ID" value={admin?.userId || '—'} />
+            <DetailField label="Username" value={admin?.username || '—'} />
+            <DetailField label="Email" value={admin?.email || '—'} />
+            <DetailField label="Role" value={admin?.role || '—'} />
+            <DetailField label="Temporary password" value={admin?.temporaryPassword || '—'} />
+            <DetailField label="Note" value={admin?.note || '—'} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-line bg-surface p-4">
+          <div className="text-[11px] uppercase tracking-wider text-ink-400">Summary</div>
+          <pre className="mt-2 text-xs sm:text-sm whitespace-pre-wrap break-words text-ink-700 bg-muted/40 rounded-xl p-4 overflow-x-auto">
+            {summaryText}
+          </pre>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function buildSchoolPayload(form: SchoolForm): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     name: form.name.trim(),
@@ -839,6 +940,26 @@ function buildSchoolPayload(form: SchoolForm): Record<string, unknown> {
   }
 
   return payload;
+}
+
+function buildRegistrationSummary(result: SchoolRegistrationResult) {
+  const school = result.school;
+  const admin = result.schoolAdmin;
+  return [
+    `School: ${school.name}`,
+    `School ID: ${school.id}`,
+    `Registration Number: ${school.registrationNumber}`,
+    `School Code: ${school.schoolCode ?? school.registrationNumber}`,
+    `Status: ${school.status}`,
+    '',
+    'School Admin',
+    `User ID: ${admin?.userId ?? '—'}`,
+    `Username: ${admin?.username ?? '—'}`,
+    `Email: ${admin?.email ?? '—'}`,
+    `Role: ${admin?.role ?? '—'}`,
+    `Temporary Password: ${admin?.temporaryPassword ?? '—'}`,
+    `Note: ${admin?.note ?? '—'}`,
+  ].join('\n');
 }
 
 function filterSchools(schools: SchoolListItem[], query: string) {

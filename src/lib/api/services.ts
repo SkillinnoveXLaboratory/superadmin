@@ -10,6 +10,7 @@ import type {
   LoginCredentials,
   LoginResponse,
   PaginatedSchoolsResponse,
+  SchoolRegistrationResult,
   PaginatedStudentsResponse,
   PlatformKPIs,
   StudentIdCardPayload,
@@ -202,8 +203,57 @@ export const SuperAdmin = {
     } satisfies School;
   },
 
-  createSchool: (data: Partial<School> & { name: string }) =>
-    unwrap<School>(api.post('/super-admin/schools', data)),
+  createSchool: async (data: Partial<School> & { name: string }) => {
+    const res = await api.post('/super-admin/schools', data);
+    const body = res.data as Record<string, unknown>;
+    const schoolRaw = (body.school ?? body.data ?? body) as Record<string, unknown>;
+    const school = {
+      id: typeof schoolRaw._id === 'string' ? schoolRaw._id : typeof schoolRaw.id === 'string' ? schoolRaw.id : '',
+      name: typeof schoolRaw.name === 'string' ? schoolRaw.name : '',
+      registrationNumber: typeof schoolRaw.registrationNumber === 'string' ? schoolRaw.registrationNumber : '',
+      schoolCode: typeof schoolRaw.schoolCode === 'string' ? schoolRaw.schoolCode : undefined,
+      address: typeof schoolRaw.address === 'string' ? schoolRaw.address : '',
+      contactEmail: typeof schoolRaw.contactEmail === 'string' ? schoolRaw.contactEmail : '',
+      contactPhone: typeof schoolRaw.contactPhone === 'string' ? schoolRaw.contactPhone : typeof schoolRaw.primaryPhone === 'string' ? schoolRaw.primaryPhone : '',
+      primaryPhone: typeof schoolRaw.primaryPhone === 'string' ? schoolRaw.primaryPhone : undefined,
+      secondaryPhone: typeof schoolRaw.secondaryPhone === 'string' ? schoolRaw.secondaryPhone : undefined,
+      city: typeof schoolRaw.city === 'string' ? schoolRaw.city : undefined,
+      district: typeof schoolRaw.district === 'string' ? schoolRaw.district : undefined,
+      pincode: typeof schoolRaw.pincode === 'string' ? schoolRaw.pincode : undefined,
+      state: typeof schoolRaw.state === 'string' ? schoolRaw.state : undefined,
+      country: typeof schoolRaw.country === 'string' ? schoolRaw.country : undefined,
+      logoUrl: typeof schoolRaw.logoUrl === 'string' ? schoolRaw.logoUrl : undefined,
+      websiteUrl: typeof schoolRaw.websiteUrl === 'string' ? schoolRaw.websiteUrl : undefined,
+      status: schoolRaw.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+      createdAt: typeof schoolRaw.createdAt === 'string' ? schoolRaw.createdAt : '',
+      updatedAt: typeof schoolRaw.updatedAt === 'string' ? schoolRaw.updatedAt : '',
+      ...(normalizeSchoolLocation(schoolRaw.location ?? {
+        latitude: schoolRaw.latitude,
+        longitude: schoolRaw.longitude,
+        address: schoolRaw.locationAddress ?? schoolRaw.locationLabel,
+      }) ? { location: normalizeSchoolLocation(schoolRaw.location ?? {
+        latitude: schoolRaw.latitude,
+        longitude: schoolRaw.longitude,
+        address: schoolRaw.locationAddress ?? schoolRaw.locationLabel,
+      }) } : {}),
+    } as School;
+    const adminRaw = (body.schoolAdmin ?? body.admin ?? body.user) as Record<string, unknown> | undefined;
+    const schoolAdmin = adminRaw
+      ? {
+          userId: typeof adminRaw.userId === 'string' ? adminRaw.userId : typeof adminRaw.id === 'string' ? adminRaw.id : undefined,
+          username: typeof adminRaw.username === 'string' ? adminRaw.username : undefined,
+          email: typeof adminRaw.email === 'string' ? adminRaw.email : undefined,
+          role: typeof adminRaw.role === 'string' ? adminRaw.role : undefined,
+          temporaryPassword: typeof adminRaw.temporaryPassword === 'string' ? adminRaw.temporaryPassword : undefined,
+          note: typeof adminRaw.note === 'string' ? adminRaw.note : undefined,
+        }
+      : undefined;
+    return {
+      message: typeof body.message === 'string' ? body.message : undefined,
+      school,
+      ...(schoolAdmin ? { schoolAdmin } : {}),
+    } satisfies SchoolRegistrationResult;
+  },
 
   updateSchool: (id: ID, data: Partial<School>) =>
     unwrap<School>(api.put(`/super-admin/schools/${id}`, data)),

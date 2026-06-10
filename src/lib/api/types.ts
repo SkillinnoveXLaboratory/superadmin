@@ -119,6 +119,19 @@ export interface PaginatedSchoolsResponse {
   };
 }
 
+export interface SchoolRegistrationResult {
+  school: School;
+  schoolAdmin?: {
+    userId?: string;
+    username?: string;
+    email?: string;
+    role?: string;
+    temporaryPassword?: string;
+    note?: string;
+  };
+  message?: string;
+}
+
 export interface User {
   id: ID;
   username: string;
