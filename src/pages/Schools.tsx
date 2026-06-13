@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -24,6 +24,7 @@ type SchoolForm = {
   contactEmail: string;
   primaryPhone: string;
   secondaryPhone: string;
+  profileImageUrl: string;
   logoUrl: string;
   websiteUrl: string;
   location: SchoolLocationForm;
@@ -54,6 +55,7 @@ const emptyForm: SchoolForm = {
   contactEmail: '',
   primaryPhone: '',
   secondaryPhone: '',
+  profileImageUrl: '',
   logoUrl: '',
   websiteUrl: '',
   location: {
@@ -175,8 +177,14 @@ export function SchoolsPage() {
                   <tr key={s.id} className="hover:bg-muted/40 transition-colors group">
                     <td className="table-cell">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-xl bg-brand-gradient text-white grid place-items-center font-semibold text-sm shrink-0">
-                          {initials(s.name)}
+                        <div className="h-10 w-10 rounded-xl overflow-hidden bg-brand-gradient text-white grid place-items-center font-semibold text-sm shrink-0">
+                          {s.profileImageUrl ? (
+                            <img src={s.profileImageUrl} alt={s.name} className="h-full w-full object-cover" />
+                          ) : s.logoUrl ? (
+                            <img src={s.logoUrl} alt={s.name} className="h-full w-full object-cover" />
+                          ) : (
+                            initials(s.name)
+                          )}
                         </div>
                         <div className="min-w-0">
                           <div className="font-semibold text-ink-900 group-hover:text-brand-700 transition-colors truncate">
@@ -344,6 +352,8 @@ function SchoolModal({
   const [geoSearching, setGeoSearching] = useState(false);
   const [geoError, setGeoError] = useState('');
   const [geoQuery, setGeoQuery] = useState('');
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   useEffect(() => {
     if (schoolQuery.data) {
@@ -360,6 +370,7 @@ function SchoolModal({
         contactEmail: schoolQuery.data.contactEmail ?? '',
         primaryPhone: (schoolQuery.data as any).primaryPhone ?? schoolQuery.data.contactPhone ?? '',
         secondaryPhone: (schoolQuery.data as any).secondaryPhone ?? '',
+        profileImageUrl: (schoolQuery.data as any).profileImageUrl ?? '',
         logoUrl: (schoolQuery.data as any).logoUrl ?? '',
         websiteUrl: (schoolQuery.data as any).websiteUrl ?? '',
         location: {
@@ -416,6 +427,24 @@ function SchoolModal({
   function submit(e: FormEvent) {
     e.preventDefault();
     save.mutate(buildSchoolPayload(form));
+  }
+
+  async function uploadLogo(file: File) {
+    if (!schoolId) return;
+    try {
+      setLogoUploading(true);
+      const result = await SuperAdmin.uploadSchoolLogo(schoolId, file);
+      if (result.logoUrl) {
+        setForm((current) => ({ ...current, logoUrl: result.logoUrl ?? current.logoUrl }));
+      }
+      toast.success(result.message || 'School logo uploaded');
+      await qc.invalidateQueries({ queryKey: ['schools'] });
+      await qc.invalidateQueries({ queryKey: ['school', schoolId] });
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to upload school logo');
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   async function searchLocation() {
@@ -698,6 +727,7 @@ function SchoolModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="School code" value={form.schoolCode} onChange={(v) => setForm((f) => ({ ...f, schoolCode: v }))} />
               <Field label="Website URL" value={form.websiteUrl} onChange={(v) => setForm((f) => ({ ...f, websiteUrl: v }))} />
+              <Field label="Profile image URL" value={form.profileImageUrl} onChange={(v) => setForm((f) => ({ ...f, profileImageUrl: v }))} />
               <Field label="Logo URL" value={form.logoUrl} onChange={(v) => setForm((f) => ({ ...f, logoUrl: v }))} />
               <Field label="Country" value={form.country} onChange={(v) => setForm((f) => ({ ...f, country: v }))} />
               <Field label="State" value={form.state} onChange={(v) => setForm((f) => ({ ...f, state: v }))} />
@@ -727,6 +757,41 @@ function SchoolModal({
                 onChange={(v) => setForm((f) => ({ ...f, secondaryPhone: v }))}
               />
             </div>
+
+            {isEdit && (
+              <div className="rounded-2xl border border-line bg-surface p-4 space-y-3">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-14 w-14 rounded-2xl overflow-hidden bg-brand-gradient text-white grid place-items-center shrink-0">
+                      {form.logoUrl ? <img src={form.logoUrl} alt={form.name} className="h-full w-full object-cover" /> : <Icon name="school" size={20} />}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-ink-900">School logo</p>
+                      <p className="text-xs text-ink-500">Upload an image to update `logoUrl` through the dedicated API.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-outline text-xs px-3 py-2"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={logoUploading}
+                  >
+                    {logoUploading ? 'Uploading...' : 'Upload logo'}
+                  </button>
+                </div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) uploadLogo(file);
+                    event.target.value = '';
+                  }}
+                />
+              </div>
+            )}
 
             {form.location.latitude && form.location.longitude && (
               <div className="rounded-2xl border border-line overflow-hidden bg-surface">
@@ -921,6 +986,7 @@ function buildSchoolPayload(form: SchoolForm): Record<string, unknown> {
     pincode: form.pincode.trim(),
     state: form.state.trim(),
     country: form.country.trim(),
+    profileImageUrl: form.profileImageUrl.trim(),
     logoUrl: form.logoUrl.trim(),
     websiteUrl: form.websiteUrl.trim(),
   };

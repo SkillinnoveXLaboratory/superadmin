@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
@@ -48,8 +48,14 @@ export function SchoolDetailPage() {
       </Link>
       <header className="card p-6">
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="h-14 w-14 rounded-2xl bg-brand-gradient text-white grid place-items-center font-display font-bold text-lg">
-            {data.name.split(/\s+/).slice(0,2).map(w=>w[0]).join('')}
+          <div className="h-14 w-14 rounded-2xl overflow-hidden bg-brand-gradient text-white grid place-items-center font-display font-bold text-lg">
+            {data.profileImageUrl ? (
+              <img src={data.profileImageUrl} alt={data.name} className="h-full w-full object-cover" />
+            ) : data.logoUrl ? (
+              <img src={data.logoUrl} alt={data.name} className="h-full w-full object-cover" />
+            ) : (
+              data.name.split(/\s+/).slice(0,2).map(w=>w[0]).join('')
+            )}
           </div>
           <div className="flex-1">
             <h1 className="font-display text-[24px] font-bold tracking-tight">{data.name}</h1>
@@ -173,17 +179,36 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
   const [form, setForm] = useState({
     name: school.name, registrationNumber: school.registrationNumber,
     contactEmail: school.contactEmail, contactPhone: school.contactPhone, address: school.address,
+    profileImageUrl: (school as any).profileImageUrl ?? '',
+    logoUrl: (school as any).logoUrl ?? '',
     location: {
       latitude: school.location?.latitude?.toString() ?? '',
       longitude: school.location?.longitude?.toString() ?? '',
       address: school.location?.address ?? school.address ?? '',
     },
   });
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
   const save = useMutation({
     mutationFn: () => SuperAdmin.updateSchool(school.id, buildSchoolPayload(form)),
     onSuccess: () => { toast.success('School updated'); onSaved(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
+
+  async function uploadLogo(file: File) {
+    try {
+      setLogoUploading(true);
+      const result = await SuperAdmin.uploadSchoolLogo(school.id, file);
+      if (result.logoUrl) {
+        setForm((current) => ({ ...current, logoUrl: result.logoUrl }));
+      }
+      toast.success(result.message || 'School logo uploaded');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to upload school logo');
+    } finally {
+      setLogoUploading(false);
+    }
+  }
   return (
     <Modal title="Edit school" onClose={onClose} size="xl"
       footer={<>
@@ -196,6 +221,8 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
         {[
           ['name', 'School name'], ['registrationNumber', 'Registration #'],
           ['contactEmail', 'Contact email'], ['contactPhone', 'Contact phone'],
+          ['profileImageUrl', 'Profile image URL'],
+          ['logoUrl', 'Logo URL'],
           ['address', 'Address'],
         ].map(([k, label]) => (
           <div key={k}>
@@ -204,6 +231,38 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
               onChange={(e) => setForm(f => ({ ...f, [k]: e.target.value }))}/>
           </div>
         ))}
+        <div className="rounded-2xl border border-line bg-surface p-4 space-y-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-14 w-14 rounded-2xl overflow-hidden bg-brand-gradient text-white grid place-items-center shrink-0">
+                {form.logoUrl ? <img src={form.logoUrl} alt={school.name} className="h-full w-full object-cover" /> : <Icon name="school" size={20} />}
+              </div>
+              <div>
+                <p className="font-semibold text-ink-900">Upload school logo</p>
+                <p className="text-xs text-ink-500">Uses `PATCH /super-admin/schools/:id/logo` and updates `logoUrl`.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              disabled={logoUploading}
+              className="btn-outline text-xs px-3 py-2"
+            >
+              {logoUploading ? 'Uploading...' : 'Upload logo'}
+            </button>
+          </div>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) uploadLogo(file);
+              event.target.value = '';
+            }}
+          />
+        </div>
         <section className="rounded-2xl border border-line bg-muted/20 p-4 space-y-3">
           <div>
             <h3 className="font-semibold text-ink-900">Location</h3>
@@ -331,6 +390,8 @@ function buildSchoolPayload(form: {
   registrationNumber: string;
   contactEmail: string;
   contactPhone: string;
+  profileImageUrl?: string;
+  logoUrl?: string;
   address: string;
   location: { latitude: string; longitude: string; address: string };
 }) {
@@ -339,6 +400,8 @@ function buildSchoolPayload(form: {
     registrationNumber: form.registrationNumber.trim(),
     contactEmail: form.contactEmail.trim(),
     contactPhone: form.contactPhone.trim(),
+    profileImageUrl: form.profileImageUrl?.trim() || undefined,
+    logoUrl: form.logoUrl?.trim() || undefined,
     address: form.address.trim(),
   };
   const latitude = Number(form.location.latitude);

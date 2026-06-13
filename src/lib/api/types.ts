@@ -32,6 +32,7 @@ export interface School {
   pincode?: string;
   state?: string;
   country?: string;
+  profileImageUrl?: string;
   logoUrl?: string;
   websiteUrl?: string;
   status: 'ACTIVE' | 'SUSPENDED';
@@ -58,6 +59,7 @@ export interface SchoolListItem {
   pincode?: string;
   state?: string;
   country?: string;
+  profileImageUrl?: string;
   logoUrl?: string;
   websiteUrl?: string;
   status: 'ACTIVE' | 'SUSPENDED';

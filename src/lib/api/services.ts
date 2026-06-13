@@ -80,6 +80,7 @@ function normalizeSchoolRecord(record: Record<string, unknown>): SchoolListItem 
     pincode: typeof record.pincode === 'string' ? record.pincode : undefined,
     state: typeof record.state === 'string' ? record.state : undefined,
     country: typeof record.country === 'string' ? record.country : undefined,
+    profileImageUrl: typeof record.profileImageUrl === 'string' ? record.profileImageUrl : undefined,
     logoUrl: typeof record.logoUrl === 'string' ? record.logoUrl : undefined,
     websiteUrl: typeof record.websiteUrl === 'string' ? record.websiteUrl : undefined,
     status: record.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
@@ -194,6 +195,7 @@ export const SuperAdmin = {
       pincode: typeof data.pincode === 'string' ? data.pincode : undefined,
       state: typeof data.state === 'string' ? data.state : undefined,
       country: typeof data.country === 'string' ? data.country : undefined,
+      profileImageUrl: typeof data.profileImageUrl === 'string' ? data.profileImageUrl : undefined,
       logoUrl: typeof data.logoUrl === 'string' ? data.logoUrl : undefined,
       websiteUrl: typeof data.websiteUrl === 'string' ? data.websiteUrl : undefined,
       status: data.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
@@ -222,6 +224,7 @@ export const SuperAdmin = {
       pincode: typeof schoolRaw.pincode === 'string' ? schoolRaw.pincode : undefined,
       state: typeof schoolRaw.state === 'string' ? schoolRaw.state : undefined,
       country: typeof schoolRaw.country === 'string' ? schoolRaw.country : undefined,
+      profileImageUrl: typeof schoolRaw.profileImageUrl === 'string' ? schoolRaw.profileImageUrl : undefined,
       logoUrl: typeof schoolRaw.logoUrl === 'string' ? schoolRaw.logoUrl : undefined,
       websiteUrl: typeof schoolRaw.websiteUrl === 'string' ? schoolRaw.websiteUrl : undefined,
       status: schoolRaw.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
@@ -257,6 +260,22 @@ export const SuperAdmin = {
 
   updateSchool: (id: ID, data: Partial<School>) =>
     unwrap<School>(api.put(`/super-admin/schools/${id}`, data)),
+
+  uploadSchoolLogo: async (id: ID, file: File) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const res = await api.patch(`/super-admin/schools/${id}/logo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const body = res.data as Record<string, unknown>;
+    return {
+      success: body.success as boolean | undefined,
+      logoUrl: typeof body.logoUrl === 'string' ? body.logoUrl : typeof body.data === 'object' && body.data !== null && typeof (body.data as Record<string, unknown>).logoUrl === 'string'
+        ? (body.data as Record<string, unknown>).logoUrl as string
+        : undefined,
+      message: typeof body.message === 'string' ? body.message : undefined,
+    };
+  },
 
   deleteSchool: (id: ID) => unwrap<void>(api.delete(`/super-admin/schools/${id}`)),
 
