@@ -434,7 +434,7 @@ function SchoolModal({
   async function uploadProfileImage(file: File) {
     try {
       setProfileImageUploading(true);
-      const url = await SuperAdmin.uploadFile(file);
+      const url = await SuperAdmin.uploadFile(file, schoolId);
       if (url) {
         setForm((current) => ({ ...current, profileImageUrl: url }));
       }
@@ -449,7 +449,7 @@ function SchoolModal({
   async function uploadLogo(file: File) {
     try {
       setLogoUploading(true);
-      const url = await SuperAdmin.uploadFile(file);
+      const url = await SuperAdmin.uploadFile(file, schoolId);
       if (url) {
         setForm((current) => ({ ...current, logoUrl: url }));
       }
@@ -754,15 +754,17 @@ function SchoolModal({
               <UploadAssetCard
                 label="Profile image URL"
                 value={form.profileImageUrl}
-                note="Upload a principal or school avatar image with /upload, then the returned URL is filled here."
+                note={isEdit ? 'Upload a principal or school avatar image with /upload, then the returned URL is filled here.' : 'Register the school first, then upload the profile image for that tenant.'}
                 uploading={profileImageUploading}
+                disabled={!isEdit}
                 onUploadClick={() => profileImageInputRef.current?.click()}
               />
               <UploadAssetCard
                 label="Logo URL"
                 value={form.logoUrl}
-                note="Upload the school logo with /upload, then the returned URL is filled here."
+                note={isEdit ? 'Upload the school logo with /upload, then the returned URL is filled here.' : 'Register the school first, then upload the logo for that tenant.'}
                 uploading={logoUploading}
+                disabled={!isEdit}
                 onUploadClick={() => logoInputRef.current?.click()}
               />
             </div>
@@ -873,12 +875,14 @@ function UploadAssetCard({
   value,
   note,
   uploading,
+  disabled,
   onUploadClick,
 }: {
   label: string;
   value: string;
   note: string;
   uploading: boolean;
+  disabled?: boolean;
   onUploadClick: () => void;
 }) {
   return (
@@ -900,10 +904,10 @@ function UploadAssetCard({
         <button
           type="button"
           onClick={onUploadClick}
-          disabled={uploading}
+          disabled={uploading || disabled}
           className="btn-outline text-xs px-3 py-2"
         >
-          {uploading ? 'Uploading...' : 'Upload'}
+          {uploading ? 'Uploading...' : disabled ? 'Save first' : 'Upload'}
         </button>
       </div>
     </div>

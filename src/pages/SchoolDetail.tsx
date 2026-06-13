@@ -200,7 +200,7 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
   async function uploadProfileImage(file: File) {
     try {
       setProfileImageUploading(true);
-      const url = await SuperAdmin.uploadFile(file);
+      const url = await SuperAdmin.uploadFile(file, school.id);
       if (url) {
         setForm((current) => ({ ...current, profileImageUrl: url }));
       }
@@ -215,7 +215,7 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
   async function uploadLogo(file: File) {
     try {
       setLogoUploading(true);
-      const url = await SuperAdmin.uploadFile(file);
+      const url = await SuperAdmin.uploadFile(file, school.id);
       if (url) {
         setForm((current) => ({ ...current, logoUrl: url }));
       }

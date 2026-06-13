@@ -277,11 +277,17 @@ export const SuperAdmin = {
     };
   },
 
-  uploadFile: async (file: File) => {
+  uploadFile: async (file: File, schoolId?: ID | null) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (!schoolId) {
+      throw new Error('Save the school first, then upload files for that tenant.');
+    }
     const res = await api.post('/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'X-School-ID': schoolId,
+      },
     });
     const body = res.data as Record<string, unknown>;
     const fileNode = (body.file as Record<string, unknown> | undefined) ?? {};
