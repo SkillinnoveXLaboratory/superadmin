@@ -187,7 +187,9 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
       address: school.location?.address ?? school.address ?? '',
     },
   });
+  const profileImageInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const [profileImageUploading, setProfileImageUploading] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const save = useMutation({
     mutationFn: () => SuperAdmin.updateSchool(school.id, buildSchoolPayload(form)),
@@ -195,14 +197,29 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
 
+  async function uploadProfileImage(file: File) {
+    try {
+      setProfileImageUploading(true);
+      const url = await SuperAdmin.uploadFile(file);
+      if (url) {
+        setForm((current) => ({ ...current, profileImageUrl: url }));
+      }
+      toast.success('School profile image uploaded');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to upload school profile image');
+    } finally {
+      setProfileImageUploading(false);
+    }
+  }
+
   async function uploadLogo(file: File) {
     try {
       setLogoUploading(true);
-      const result = await SuperAdmin.uploadSchoolLogo(school.id, file);
-      if (result.logoUrl) {
-        setForm((current) => ({ ...current, logoUrl: result.logoUrl }));
+      const url = await SuperAdmin.uploadFile(file);
+      if (url) {
+        setForm((current) => ({ ...current, logoUrl: url }));
       }
-      toast.success(result.message || 'School logo uploaded');
+      toast.success('School logo uploaded');
     } catch (error: any) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to upload school logo');
     } finally {
@@ -231,38 +248,44 @@ function EditSchoolModal({ school, onClose, onSaved }: { school: School; onClose
               onChange={(e) => setForm(f => ({ ...f, [k]: e.target.value }))}/>
           </div>
         ))}
-        <div className="rounded-2xl border border-line bg-surface p-4 space-y-3">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-14 w-14 rounded-2xl overflow-hidden bg-brand-gradient text-white grid place-items-center shrink-0">
-                {form.logoUrl ? <img src={form.logoUrl} alt={school.name} className="h-full w-full object-cover" /> : <Icon name="school" size={20} />}
-              </div>
-              <div>
-                <p className="font-semibold text-ink-900">Upload school logo</p>
-                <p className="text-xs text-ink-500">Uses `PATCH /super-admin/schools/:id/logo` and updates `logoUrl`.</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => logoInputRef.current?.click()}
-              disabled={logoUploading}
-              className="btn-outline text-xs px-3 py-2"
-            >
-              {logoUploading ? 'Uploading...' : 'Upload logo'}
-            </button>
-          </div>
-          <input
-            ref={logoInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) uploadLogo(file);
-              event.target.value = '';
-            }}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <UploadAssetCard
+            label="Profile image URL"
+            value={form.profileImageUrl}
+            note="Upload the principal or school profile image with /upload, then the returned URL is filled here."
+            uploading={profileImageUploading}
+            onUploadClick={() => profileImageInputRef.current?.click()}
+          />
+          <UploadAssetCard
+            label="Logo URL"
+            value={form.logoUrl}
+            note="Upload the school logo with /upload, then the returned URL is filled here."
+            uploading={logoUploading}
+            onUploadClick={() => logoInputRef.current?.click()}
           />
         </div>
+        <input
+          ref={profileImageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) uploadProfileImage(file);
+            event.target.value = '';
+          }}
+        />
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) uploadLogo(file);
+            event.target.value = '';
+          }}
+        />
         <section className="rounded-2xl border border-line bg-muted/20 p-4 space-y-3">
           <div>
             <h3 className="font-semibold text-ink-900">Location</h3>
@@ -331,6 +354,44 @@ function Row({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-ink-400 text-xs uppercase tracking-wider">{label}</dt>
       <dd className="text-ink-900 mt-0.5">{value}</dd>
+    </div>
+  );
+}
+
+function UploadAssetCard({
+  label,
+  value,
+  note,
+  uploading,
+  onUploadClick,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  uploading: boolean;
+  onUploadClick: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4 space-y-3">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-14 w-14 rounded-2xl overflow-hidden bg-brand-gradient text-white grid place-items-center shrink-0">
+            {value ? <img src={value} alt={label} className="h-full w-full object-cover" /> : <Icon name="upload" size={20} />}
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-ink-900">{label}</p>
+            <p className="text-xs text-ink-500">{note}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onUploadClick}
+          disabled={uploading}
+          className="btn-outline text-xs px-3 py-2"
+        >
+          {uploading ? 'Uploading...' : 'Upload'}
+        </button>
+      </div>
     </div>
   );
 }

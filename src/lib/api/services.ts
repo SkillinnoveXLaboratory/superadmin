@@ -277,6 +277,26 @@ export const SuperAdmin = {
     };
   },
 
+  uploadFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const body = res.data as Record<string, unknown>;
+    const fileNode = (body.file as Record<string, unknown> | undefined) ?? {};
+    const url =
+      typeof fileNode.url === 'string'
+        ? fileNode.url
+        : typeof body.url === 'string'
+          ? body.url
+          : '';
+    if (!url) {
+      throw new Error(typeof body.message === 'string' ? body.message : 'Upload failed');
+    }
+    return url;
+  },
+
   deleteSchool: (id: ID) => unwrap<void>(api.delete(`/super-admin/schools/${id}`)),
 
   suspendSchool: (id: ID) =>
